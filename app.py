@@ -112,10 +112,12 @@ def create_bmi_gauge(bmi):
                 {'range': [ranges[3], ranges[4]], 'color': colors[3], 'name': 'Obese'},
                 {'range': [ranges[4], ranges[5]], 'color': colors[4], 'name': 'Extremely Obese'}
             ],
-            # This part creates the "needle"
+            
+            # --- THIS IS THE "NEEDLE" ---
+            # I've made it thicker (thickness=1) and wider (width=8)
             'threshold': {
-                'line': {'color': "black", 'width': 6},
-                'thickness': 0.9,
+                'line': {'color': "black", 'width': 8},
+                'thickness': 1,
                 'value': bmi
             }
         }
@@ -258,17 +260,19 @@ def get_initial_workout_plan(goal, experience):
     
     return plan
 
-
-def get_ai_recommendation(profile, progress):
+# --- THIS IS THE FIRST FIX ---
+# The function now accepts the current plans as arguments
+def get_ai_recommendation(profile, progress, current_nutrition_plan, current_workout_plan):
     """
     This is the "AI Coach" brain.
     It analyzes the user's weekly check-in data (the 'progress' dict)
     and makes an intelligent decision on how to adapt their plan.
     """
     
-    # Deep copy the plans to avoid changing the original
-    new_nutrition_plan = copy.deepcopy(profile['nutrition_plan'])
-    new_workout_plan = copy.deepcopy(profile['workout_plan'])
+    # --- THIS IS THE SECOND FIX ---
+    # We now deepcopy from the arguments, not from the profile dict
+    new_nutrition_plan = copy.deepcopy(current_nutrition_plan)
+    new_workout_plan = copy.deepcopy(current_workout_plan)
     
     # Get all the data from the check-in
     goal = profile['goal']
@@ -574,7 +578,14 @@ elif st.session_state.page == "Dashboard":
                 }
                 
                 # 2. Call the "AI Brain" to get new plans and feedback
-                new_nutrition_plan, new_workout_plan, ai_feedback = get_ai_recommendation(profile, progress_log)
+                # --- THIS IS THE THIRD FIX ---
+                # We now pass the current plans to the function
+                new_nutrition_plan, new_workout_plan, ai_feedback = get_ai_recommendation(
+                    profile, 
+                    progress_log, 
+                    st.session_state.current_nutrition_plan, 
+                    st.session_state.current_workout_plan
+                )
                 
                 # 3. Save all the new data to our session_state "database"
                 st.session_state.progress_history.append(progress_log)
