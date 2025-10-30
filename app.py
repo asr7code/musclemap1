@@ -4,7 +4,7 @@ import time
 import copy
 import datetime
 import plotly.graph_objects as go
-import math # <-- NEW: Import Math for needle calculations
+import math # Import Math for needle calculations
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -87,21 +87,34 @@ def calculate_bmi_details(weight, height_cm):
         
     return bmi, category, color
 
-# --- THIS IS THE NEW GAUGE FUNCTION ---
+# --- THIS IS THE FINAL GAUGE FUNCTION ---
 def create_bmi_gauge(bmi):
     """
-    Creates a Plotly gauge chart with a custom-drawn needle.
+    Creates a Plotly gauge chart with a custom-drawn needle and text.
     """
     # Define the ranges and colors
     ranges = [0, 18.5, 25, 30, 35, 50]
+    # Standard colors based on user's first image
     colors = ["#007bff", "#28a745", "#ffc107", "#fd7e14", "#dc3545"]
     
     # Create the base gauge
     fig = go.Figure(go.Indicator(
         mode = "gauge+number",
         value = bmi,
-        number = {'suffix': " BMI", 'font': {'size': 24}, 'valueformat': ".1f"},
-        title = {'text': "Your BMI Category", 'font': {'size': 20}},
+        
+        # --- NEW: Format number to look like "BMI = 23" ---
+        number = {
+            'prefix': "BMI = ", 
+            'font': {'size': 36, 'color': "black"}, 
+            'valueformat': ".1f"
+        },
+        
+        # We put the category (e.g., "Normal") in the title
+        title = {
+            'text': calculate_bmi_details(bmi, 100)[1], # Hack to get category
+            'font': {'size': 24, 'color': "gray"}
+        },
+        
         gauge = {
             'axis': {'range': [None, 50], 'tickwidth': 1, 'tickcolor': "darkgray"},
             'bar': {'color': "rgba(0,0,0,0)"}, # Make the default bar invisible
@@ -109,35 +122,29 @@ def create_bmi_gauge(bmi):
             'borderwidth': 2,
             'bordercolor': "gray",
             'steps': [
-                {'range': [ranges[0], ranges[1]], 'color': colors[0], 'name': 'Underweight'},
-                {'range': [ranges[1], ranges[2]], 'color': colors[1], 'name': 'Normal'},
-                {'range': [ranges[2], ranges[3]], 'color': colors[2], 'name': 'Overweight'},
-                {'range': [ranges[3], ranges[4]], 'color': colors[3], 'name': 'Obese'},
-                {'range': [ranges[4], ranges[5]], 'color': colors[4], 'name': 'Extremely Obese'}
+                {'range': [ranges[0], ranges[1]], 'color': colors[0]},
+                {'range': [ranges[1], ranges[2]], 'color': colors[1]},
+                {'range': [ranges[2], ranges[3]], 'color': colors[2]},
+                {'range': [ranges[3], ranges[4]], 'color': colors[3]},
+                {'range': [ranges[4], ranges[5]], 'color': colors[4]}
             ]
-            # We REMOVED the 'threshold' block here
         }
     ))
     
-    # --- Draw the Custom Needle ---
-    
-    # Map BMI to angle (0-50 BMI -> 180-0 degrees)
+    # --- Draw the Custom Needle (Gray and thinner) ---
     max_bmi = 50
-    # Ensure BMI is within the gauge range for angle calculation
     clipped_bmi = max(0, min(bmi, max_bmi)) 
     angle_rad = (1 - (clipped_bmi / max_bmi)) * math.pi
     
-    # Needle properties (relative to the plot's 0-1, 0-1 coordinate system)
-    center_x, center_y = 0.5, 0
-    needle_length = 0.4
-    needle_base_width = 0.04 # Width of the needle base
+    center_x, center_y = 0.5, -0.05 # Move center down slightly
+    needle_length = 0.5
+    needle_base_width = 0.03 # Thinner base
     
-    # Calculate coordinates for the triangle
     # Tip
     tip_x = center_x + needle_length * math.cos(angle_rad)
     tip_y = center_y + needle_length * math.sin(angle_rad)
     
-    # Base corners (perpendicular to the needle)
+    # Base corners
     base_x1 = center_x - needle_base_width * math.sin(angle_rad)
     base_y1 = center_y + needle_base_width * math.cos(angle_rad)
     base_x2 = center_x + needle_base_width * math.sin(angle_rad)
@@ -150,16 +157,16 @@ def create_bmi_gauge(bmi):
     fig.add_shape(
         type="path",
         path=path,
-        fillcolor="black",
+        fillcolor="gray", # <-- NEW: Changed to gray
         line_width=0,
-        layer="above" # Draw it on top of the gauge
+        layer="above"
     )
     
     # Add a circle for the pivot point
     fig.add_shape(
         type="circle",
-        x0=0.46, y0=-0.04, x1=0.54, y1=0.04, # Centered at (0.5, 0)
-        fillcolor="black",
+        x0=0.47, y0=-0.08, x1=0.53, y1=-0.02, # Centered at (0.5, -0.05)
+        fillcolor="gray", # <-- NEW: Changed to gray
         line_width=0,
         layer="above"
     )
@@ -168,7 +175,6 @@ def create_bmi_gauge(bmi):
         height=350, 
         margin={'t': 50, 'b': 30, 'l': 30, 'r': 30},
         paper_bgcolor="rgba(0,0,0,0)",
-        font={'color': "black"} # Set font to black for visibility on white gauge
     )
     return fig
 
