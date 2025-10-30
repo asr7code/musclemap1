@@ -523,7 +523,7 @@ elif st.session_state.page == "Dashboard":
     with st.form("progress_form"):
         st.markdown("Log your progress for the past week. Be as honest as possible!")
         
-        with st.form("progress_form"):
+        with st.form("progress_form"):  # <-- THIS IS THE BUG
             st.markdown("Log your progress for the past week. Be as honest as possible!")
             
             # 1. New Weight
@@ -617,5 +617,4 @@ elif st.session_state.page == "Dashboard":
         full_chart_data = pd.concat([start_data, chart_data])
         
         st.line_chart(full_chart_data)
-
 
