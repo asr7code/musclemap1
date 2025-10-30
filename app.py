@@ -3,17 +3,18 @@ import pandas as pd
 import time
 import copy
 import datetime
+import plotly.graph_objects as go # <-- NEW: Import Plotly
 
 # --- Page Configuration ---
 st.set_page_config(
     layout="wide",
-    page_title="MuscleMap AI Coach",
-    page_icon="🤖"
+    page_title="MuscleMap AI",
+    page_icon="💪"
 )
 
 # --- Sidebar ---
 with st.sidebar:
-    st.title("MuscleMap AI Coach 🤖")
+    st.title("MuscleMap AI 💪")
     st.markdown("Your AI-Powered Fitness Transformation Companion.")
     st.markdown("---")
     st.markdown("**Project By:**")
@@ -28,35 +29,34 @@ with st.sidebar:
 
 def calculate_tdee(profile):
     """
-    Calculates TDEE (Total Daily Energy Expenditure) using Harris-Benedict Eq.
-    This is the "engine" of the diet plan.
+    Calculates TDEE using the Harris-Benedict formula (revised).
+    Uses real gym/nutrition rules.
     """
-    weight = profile['start_weight']
-    height = profile['height']
     age = profile['age']
+    height = profile['height']
+    weight = profile['start_weight']
     gender = profile['gender']
-    activity = profile['activity_level']
+    activity_level = profile['activity_level']
 
-    # 1. Calculate BMR (Basal Metabolic Rate)
+    # Revised Harris-Benedict BMR Calculation
     if gender == "Male":
         bmr = 88.362 + (13.397 * weight) + (4.799 * height) - (5.677 * age)
     else: # Female
         bmr = 447.593 + (9.247 * weight) + (3.098 * height) - (4.330 * age)
 
-    # 2. Activity Multipliers
-    if activity == "Sedentary (office job)":
+    # Activity Level Multiplier
+    if activity_level == "Sedentary (office job)":
         multiplier = 1.2
-    elif activity == "Light (1-2 workouts/week)":
+    elif activity_level == "Lightly Active (1-2 days/week)":
         multiplier = 1.375
-    elif activity == "Moderate (3-5 workouts/week)":
+    elif activity_level == "Moderately Active (3-5 days/week)":
         multiplier = 1.55
-    else: # Active (6-7 workouts/week)
+    else: # Very Active (6-7 days/week)
         multiplier = 1.725
-        
+    
     tdee = bmr * multiplier
     return int(tdee)
 
-# --- NEW FUNCTION TO CALCULATE BMI ---
 def calculate_bmi_details(weight, height_cm):
     """
     Calculates BMI, determines the category, and assigns a color.
@@ -86,248 +86,328 @@ def calculate_bmi_details(weight, height_cm):
         
     return bmi, category, color
 
+def create_bmi_gauge(bmi):
+    """
+    Creates a Plotly gauge chart based on the user's BMI.
+    """
+    # Define the ranges and colors from the user's image
+    ranges = [0, 18.5, 25, 30, 35, 50] # 50 is a reasonable max for the gauge
+    colors = ["#007bff", "#28a745", "#ffc107", "#fd7e14", "#dc3545"]
+    
+    fig = go.Figure(go.Indicator(
+        mode = "gauge+number",
+        value = bmi,
+        number = {'suffix': " BMI", 'font': {'size': 24}, 'valueformat': ".1f"},
+        title = {'text': "Your BMI Category", 'font': {'size': 20}},
+        gauge = {
+            'axis': {'range': [None, 50], 'tickwidth': 1, 'tickcolor': "darkgray"},
+            'bar': {'color': "rgba(0,0,0,0)"}, # Make the value bar invisible
+            'bgcolor': "white",
+            'borderwidth': 2,
+            'bordercolor': "gray",
+            'steps': [
+                {'range': [ranges[0], ranges[1]], 'color': colors[0], 'name': 'Underweight'},
+                {'range': [ranges[1], ranges[2]], 'color': colors[1], 'name': 'Normal'},
+                {'range': [ranges[2], ranges[3]], 'color': colors[2], 'name': 'Overweight'},
+                {'range': [ranges[3], ranges[4]], 'color': colors[3], 'name': 'Obese'},
+                {'range': [ranges[4], ranges[5]], 'color': colors[4], 'name': 'Extremely Obese'}
+            ],
+            # This part creates the "needle"
+            'threshold': {
+                'line': {'color': "black", 'width': 6},
+                'thickness': 0.9,
+                'value': bmi
+            }
+        }
+    ))
+    
+    # Make it smaller and transparent for Streamlit
+    fig.update_layout(
+        height=350, 
+        margin={'t': 50, 'b': 30, 'l': 30, 'r': 30},
+        paper_bgcolor="rgba(0,0,0,0)",
+        font={'color': "black"} # Set font to black for visibility on white gauge
+    )
+    return fig
+
 def get_initial_nutrition_plan(tdee, goal, weight):
     """
-    Sets the initial Calories, Protein, Fats, and Carbs.
+    Generates a structured nutrition plan based on TDEE and goal.
+    Uses real gym rules:
+    - Protein: 1.8g-2.2g per kg for muscle gain, 1.6g-2g for weight loss.
+    - Fats: 20-30% of total calories.
+    - Carbs: Remainder of calories.
     """
-    nutrition = {
-        "calories": tdee,
-        "protein_g": int(weight * 1.8), # 1.8g protein per kg of bodyweight
+    plan = {
+        "calories_kcal": 0,
+        "protein_g": 0,
         "fats_g": 0,
-        "carbs_g": 0
+        "carbs_g": 0,
+        "notes": ""
     }
-    
+
     if goal == "Weight Reduction":
-        nutrition['calories'] = tdee - 400 # 400 calorie deficit
-    elif goal == "Muscle Gain":
-        nutrition['calories'] = tdee + 300 # 300 calorie surplus
-    # General Fitness stays at maintenance (tdee)
-
-    # Calculate Fats (25% of calories)
-    fats_calories = nutrition['calories'] * 0.25
-    nutrition['fats_g'] = int(fats_calories / 9)
-
-    # Calculate Carbs (Remaining calories)
-    protein_calories = nutrition['protein_g'] * 4
-    carb_calories = nutrition['calories'] - protein_calories - fats_calories
-    nutrition['carbs_g'] = int(carb_calories / 4)
+        plan['calories_kcal'] = tdee - 400 # 400 kcal deficit
+        plan['protein_g'] = int(weight * 2.0)
+        plan['notes'] = "A 400-calorie deficit is aggressive but effective. Focus on hitting your protein target to maintain muscle while losing fat."
     
-    return nutrition
+    elif goal == "Muscle Gain":
+        plan['calories_kcal'] = tdee + 300 # 300 kcal surplus
+        plan['protein_g'] = int(weight * 2.0)
+        plan['notes'] = "A 300-calorie surplus is a lean bulk. This, combined with high protein, will help you build muscle while minimizing fat gain."
+    
+    else: # General Fitness
+        plan['calories_kcal'] = tdee # Maintain weight
+        plan['protein_g'] = int(weight * 1.5)
+        plan['notes'] = "Eating at maintenance calories will fuel your workouts and help you recomp your body (build muscle and lose fat) over time."
+
+    # Calculate Fats (25% of total calories)
+    # 1g fat = 9 calories
+    plan['fats_g'] = int((plan['calories_kcal'] * 0.25) / 9)
+    
+    # Calculate Carbs (Remaining calories)
+    # 1g protein = 4 calories
+    # 1g carb = 4 calories
+    calories_from_protein_and_fats = (plan['protein_g'] * 4) + (plan['fats_g'] * 9)
+    remaining_calories = plan['calories_kcal'] - calories_from_protein_and_fats
+    plan['carbs_g'] = int(remaining_calories / 4)
+
+    return plan
 
 def get_initial_workout_plan(goal, experience):
     """
-    Creates a structured, science-based workout plan.
+    Generates a structured workout plan based on goal and experience.
+    Uses real gym rules:
+    - Beginners: Full Body 3x/week to learn form and build a base.
+    - Intermediate: PPL (Push-Pull-Legs) or Upper/Lower splits.
+    - Advanced: Higher frequency, more specialization.
+    - Rep Ranges: 6-10 for strength/hypertrophy, 10-15 for endurance.
     """
     plan = {
-        "split_type": "Full Body",
-        "frequency_per_week": 3,
-        "notes": "Focus on learning the movement and controlling the weight.",
+        "split_type": "",
+        "frequency_per_week": 0,
+        "notes": "",
         "weekly_schedule": []
     }
 
-    if goal == "Weight Reduction":
-        if experience == "Beginner":
-            plan['split_type'] = "Full Body"
-            plan['frequency_per_week'] = 3
-            plan['weekly_schedule'] = [
-                {"day": "Day 1", "focus": "Full Body A", "exercises": ["Goblet Squat: 3x10", "Push-ups (or Knee Push-ups): 3xAs many as possible", "Dumbbell Row: 3x10 (each side)", "Plank: 3x60 seconds"]},
-                {"day": "Day 2", "focus": "Cardio", "exercises": ["30-40 min LISS (Low-Intensity Steady State) cardio"]},
-                {"day": "Day 3", "focus": "Full Body B", "exercises": ["Dumbbell Deadlift: 3x10", "Dumbbell Overhead Press: 3x10", "Lat Pulldown: 3x12", "Leg Raises: 3x15"]},
-                {"day": "Day 4", "focus": "Cardio", "exercises": ["30-40 min LISS cardio"]},
-                {"day": "Day 5", "focus": "Full Body C (optional)", "exercises": ["Lunges: 3x12 (each side)", "Dumbbell Bench Press: 3x10", "Seated Cable Row: 3x12", "Ab Crunches: 3x20"]}
-            ]
-        else: # Intermediate/Advanced
-            plan['split_type'] = "Upper/Lower Split"
-            plan['frequency_per_week'] = 4
-            plan['weekly_schedule'] = [
-                {"day": "Day 1", "focus": "Upper Body (Strength)", "exercises": ["Bench Press: 4x5", "Pull-ups: 4xAs many as possible", "Overhead Press: 3x8", "Barbell Row: 3x8"]},
-                {"day": "Day 2", "focus": "Lower Body (Strength)", "exercises": ["Squat: 4x5", "Romanian Deadlift: 3x8", "Leg Press: 3x10", "Calf Raises: 4x15"]},
-                {"day": "Day 3", "focus": "HIIT Cardio", "exercises": ["20 min HIIT (1 min on, 2 min off)"]},
-                {"day": "Day 4", "focus": "Upper Body (Hypertrophy)", "exercises": ["Incline Dumbbell Press: 3x12", "Lat Pulldown: 3x12", "Lateral Raises: 4x15", "Bicep Curls: 3x12", "Tricep Pushdown: 3x12"]},
-                {"day": "Day 5", "focus": "Lower Body (Hypertrophy)", "exercises": ["Leg Extensions: 3x15", "Hamstring Curls: 3x15", "Lunges: 3x12", "Ab Circuit: 3 rounds"]}
-            ]
-
-    elif goal == "Muscle Gain":
-        if experience == "Beginner":
-            plan['split_type'] = "Full Body"
-            plan['frequency_per_week'] = 3
-            plan['weekly_schedule'] = [
-                {"day": "Day 1", "focus": "Full Body A", "exercises": ["Squat: 3x8", "Bench Press: 3x8", "Barbell Row: 3x8"]},
-                {"day": "Day 2", "focus": "Rest"},
-                {"day": "Day 3", "focus": "Full Body B", "exercises": ["Deadlift: 3x5", "Overhead Press: 3x8", "Pull-ups (or Lat Pulldown): 3x8"]},
-                {"day": "Day 4", "focus": "Rest"},
-                {"day": "Day 5", "focus": "Full Body C", "exercises": ["Leg Press: 3x10", "Dumbbell Incline Press: 3x10", "Dumbbell Row: 3x10", "Bicep Curls: 2x12", "Tricep Pushdown: 2x12"]}
-            ]
-        else: # Intermediate/Advanced
-            plan['split_type'] = "Push-Pull-Legs (PPL)"
-            plan['frequency_per_week'] = 5 # PPL + Upper/Lower
-            plan['notes'] = "Focus on Progressive Overload. Track your lifts!"
-            plan['weekly_schedule'] = [
-                {"day": "Day 1", "focus": "Push (Chest/Shoulders/Tris)", "exercises": ["Bench Press: 4x6-8", "Overhead Press: 3x8-10", "Incline Dumbbell Press: 3x10", "Lateral Raises: 4x12", "Tricep Pushdown: 3x12"]},
-                {"day": "Day 2", "focus": "Pull (Back/Biceps)", "exercises": ["Deadlift: 4x5-6", "Pull-ups: 3xAMRAP", "Barbell Row: 3x8-10", "Face Pulls: 3x15", "Bicep Curls: 3x10-12"]},
-                {"day": "Day 3", "focus": "Legs", "exercises": ["Squat: 4x6-8", "Romanian Deadlift: 3x10", "Leg Press: 3x12", "Leg Extensions: 2x15", "Hamstring Curls: 2x15"]},
-                {"day": "Day 4", "focus": "Rest"},
-                {"day": "Day 5", "focus": "Upper Body (Accessory)", "exercises": ["Dumbbell Bench Press: 3x10", "Lat Pulldown: 3x10", "Seated Cable Row: 3x10", "Dumbbell Curls: 3x12", "Overhead Tricep Ext: 3x12"]},
-                {"day": "Day 6", "focus": "Lower Body (Accessory)", "exercises": ["Hack Squat: 3x12", "Good Mornings: 3x15", "Calf Raises: 4x20", "Ab Circuit"]}
-            ]
-
-    else: # General Fitness
+    # --- Plan for Beginners ---
+    if experience == "Beginner (0-1 years)":
         plan['split_type'] = "Full Body"
         plan['frequency_per_week'] = 3
+        plan['notes'] = "Focus on learning the main compound lifts (Squat, Bench, Deadlift, Overhead Press). Aim to get a little stronger each week."
         plan['weekly_schedule'] = [
-            {"day": "Day 1", "focus": "Full Body", "exercises": ["Squat: 3x10", "Push-ups: 3xAMRAP", "Dumbbell Row: 3x10", "Plank: 3x60s"]},
-            {"day": "Day 2", "focus": "Active Recovery", "exercises": ["30 min walk or light cardio"]},
-            {"day": "Day 3", "focus": "Full Body", "exercises": ["Dumbbell Press: 3x10", "Lat Pulldown: 3x10", "Lunges: 3x12", "Leg Raises: 3x15"]},
-            {"day": "Day 4", "focus": "Active Recovery", "exercises": ["30 min walk or light cardio"]},
-            {"day": "Day 5", "focus": "Full Body", "exercises": ["Leg Press: 3x12", "Overhead Press: 3x10", "Seated Cable Row: 3x12", "Crunches: 3x20"]}
+            {"day": "Day 1", "focus": "Full Body A", "exercises": ["Squats: 3 sets of 8-10 reps", "Bench Press: 3 sets of 8-10 reps", "Barbell Row: 3 sets of 8-10 reps", "Plank: 3 sets of 60 seconds"]},
+            {"day": "Day 2", "focus": "Rest"},
+            {"day": "Day 3", "focus": "Full Body B", "exercises": ["Deadlift: 1 set of 5 reps", "Overhead Press: 3 sets of 8-10 reps", "Pull-Ups (or Lat Pulldown): 3 sets of 8-10 reps", "Lunges: 3 sets of 10-12 reps per leg"]},
+            {"day": "Day 4", "focus": "Rest"},
+            {"day": "Day 5", "focus": "Full Body A (Repeat)", "exercises": ["Squats: 3 sets of 8-10 reps", "Bench Press: 3 sets of 8-10 reps", "Barbell Row: 3 sets of 8-10 reps", "Bicep Curls: 2 sets of 12-15 reps"]},
+            {"day": "Day 6", "focus": "Rest"},
+            {"day": "Day 7", "focus": "Rest (or light cardio)"}
+        ]
+
+    # --- Plan for Intermediates ---
+    elif experience == "Intermediate (1-3 years)":
+        plan['split_type'] = "Push-Pull-Legs (PPL)"
+        plan['frequency_per_week'] = 6 if goal == "Muscle Gain" else 4 # 4-day Upper/Lower for weight loss
+        
+        if goal == "Muscle Gain":
+            plan['notes'] = "Push-Pull-Legs is a high-frequency split. The key is progressive overload: add a little weight or an extra rep to your main lifts each week."
+            plan['weekly_schedule'] = [
+                {"day": "Day 1", "focus": "Push (Chest, Shoulders, Triceps)", "exercises": ["Bench Press: 4 sets of 6-8 reps", "Overhead Press: 3 sets of 8-10 reps", "Incline Dumbbell Press: 3 sets of 10-12 reps", "Tricep Pushdown: 3 sets of 12-15 reps"]},
+                {"day": "Day 2", "focus": "Pull (Back, Biceps)", "exercises": ["Deadlift: 3 sets of 5 reps", "Pull-Ups (or Lat Pulldown): 4 sets of 8-10 reps", "Barbell Row: 3 sets of 8-10 reps", "Bicep Curls: 3 sets of 12-15 reps"]},
+                {"day": "Day 3", "focus": "Legs (Quads, Hamstrings, Calves)", "exercises": ["Squats: 4 sets of 6-8 reps", "Romanian Deadlift: 3 sets of 10-12 reps", "Leg Press: 3 sets of 12-15 reps", "Calf Raises: 4 sets of 15-20 reps"]},
+                {"day": "Day 4", "focus": "Push (Repeat)", "exercises": ["Bench Press: 4 sets of 6-8 reps", "Overhead Press: 3 sets of 8-10 reps", "Incline Dumbbell Press: 3 sets of 10-12 reps", "Tricep Pushdown: 3 sets of 12-15 reps"]},
+                {"day": "Day 5", "focus": "Pull (Repeat)", "exercises": ["Deadlift: 3 sets of 5 reps", "Pull-Ups (or Lat Pulldown): 4 sets of 8-10 reps", "Barbell Row: 3 sets of 8-10 reps", "Bicep Curls: 3 sets of 12-15 reps"]},
+                {"day": "Day 6", "focus": "Legs (Repeat)", "exercises": ["Squats: 4 sets of 6-8 reps", "Romanian Deadlift: 3 sets of 10-12 reps", "Leg Press: 3 sets of 12-15 reps", "Calf Raises: 4 sets of 15-20 reps"]},
+                {"day": "Day 7", "focus": "Rest"}
+            ]
+        else: # Weight Reduction or General Fitness
+            plan['split_type'] = "Upper / Lower Split"
+            plan['frequency_per_week'] = 4
+            plan['notes'] = "This 4-day split balances strength training and recovery, leaving 3 days for cardio, which is key for weight loss."
+            plan['weekly_schedule'] = [
+                {"day": "Day 1", "focus": "Upper Body Strength", "exercises": ["Bench Press: 4 sets of 5-8 reps", "Barbell Row: 4 sets of 5-8 reps", "Overhead Press: 3 sets of 8-10 reps", "Lat Pulldown: 3 sets of 10-12 reps"]},
+                {"day": "Day 2", "focus": "Lower Body Strength", "exercises": ["Squats: 4 sets of 5-8 reps", "Deadlift: 3 sets of 5-8 reps", "Leg Press: 3 sets of 12-15 reps", "Hamstring Curls: 3 sets of 12-15 reps"]},
+                {"day": "Day 3", "focus": "Rest / Cardio"},
+                {"day": "Day 4", "focus": "Upper Body Hypertrophy", "exercises": ["Incline Dumbbell Press: 3 sets of 10-15 reps", "Dumbbell Row: 3 sets of 10-15 reps", "Lateral Raises: 4 sets of 15-20 reps", "Bicep Curls: 3 sets of 12-15 reps", "Tricep Extensions: 3 sets of 12-15 reps"]},
+                {"day": "Day 5", "focus": "Lower Body Hypertrophy", "exercises": ["Leg Press: 4 sets of 15-20 reps", "Lunges: 3 sets of 12-15 reps per leg", "Leg Extensions: 3 sets of 15-20 reps", "Calf Raises: 4 sets of 15-20 reps"]},
+                {"day": "Day 6", "focus": "Cardio"},
+                {"day": "Day 7", "focus": "Rest"}
+            ]
+    
+    # --- Plan for Advanced ---
+    else: # Advanced (3+ years)
+        plan['split_type'] = "Advanced PPL or Body Part Split"
+        plan['frequency_per_week'] = 5
+        plan['notes'] = "As an advanced lifter, you need more volume and specialization. This 5-day split lets you dedicate entire days to specific muscle groups."
+        plan['weekly_schedule'] = [
+            {"day": "Day 1", "focus": "Chest & Triceps", "exercises": ["Bench Press: 5 sets of 5 reps", "Incline Dumbbell Press: 4 sets of 10-12 reps", "Cable Flys: 3 sets of 15-20 reps", "Skullcrushers: 4 sets of 10-12 reps"]},
+            {"day": "Day 2", "focus": "Back & Biceps", "exercises": ["Deadlift: 5 sets of 3-5 reps", "Pull-Ups (Weighted): 4 sets of 6-10 reps", "T-Bar Row: 4 sets of 8-10 reps", "Barbell Curls: 4 sets of 10-12 reps"]},
+            {"day": "Day 3", "focus": "Legs", "exercises": ["Squats: 5 sets of 5 reps", "Romanian Deadlift: 4 sets of 8-10 reps", "Leg Press: 4 sets of 15-20 reps", "Leg Curls: 3 sets of 12-15 reps", "Calf Raises: 5 sets of 15-20 reps"]},
+            {"day": "Day 4", "focus": "Shoulders & Abs", "exercises": ["Overhead Press: 5 sets of 5 reps", "Lateral Raises: 5 sets of 15-20 reps", "Reverse Pec Deck: 4 sets of 12-15 reps", "Cable Crunches: 4 sets of 15-20 reps"]},
+            {"day": "Day 5", "focus": "Full Body / Weak Point", "exercises": ["Squat: 3 sets of 5 reps", "Bench Press: 3 sets of 5 reps", "Barbell Row: 3 sets of 5 reps", "Focus on 2-3 exercises for a lagging muscle group."]},
+            {"day": "Day 6", "focus": "Rest"},
+            {"day": "Day 7", "focus": "Rest"}
         ]
         
+    # Add cardio based on goal
+    if goal == "Weight Reduction":
+        plan['notes'] += " Add 3-4 cardio sessions (30-45 min) on rest days or after workouts."
+    elif goal == "Muscle Gain":
+        plan['notes'] += " Keep cardio minimal (1-2 sessions, 20 min) to maximize recovery."
+    
     return plan
 
 
 def get_ai_recommendation(profile, progress):
     """
-    This is the ADVANCED "AI" Brain.
-    It analyzes the weekly progress log and adapts the plan.
+    This is the "AI Coach" brain.
+    It analyzes the user's weekly check-in data (the 'progress' dict)
+    and makes an intelligent decision on how to adapt their plan.
     """
-    # Get a deep copy of the current plan to modify
-    new_plan = copy.deepcopy(st.session_state.current_plan)
-    new_plan["plan_title"] = f"Adapted Plan (Week {len(st.session_state.progress_history) + 1})"
     
-    # Get all the progress data
+    # Deep copy the plans to avoid changing the original
+    new_nutrition_plan = copy.deepcopy(profile['nutrition_plan'])
+    new_workout_plan = copy.deepcopy(profile['workout_plan'])
+    
+    # Get all the data from the check-in
     goal = profile['goal']
-    start_weight = profile['start_weight'] # Weight at start of *last* interval
+    start_weight = profile['start_weight'] # Weight at the *start* of this 1-week interval
     current_weight = progress['current_weight']
-    diet = progress['diet_adherence']
-    energy = progress['energy_levels']
-    strength = progress['strength_progress']
-    sleep = progress['sleep_quality']
+    weight_change = current_weight - start_weight
     
-    # --- RULE 0: THE ADHERENCE CHECK (Most Important Rule) ---
-    if diet == "Didn't follow":
-        new_plan['ai_feedback'] = f"**AI Feedback:** You reported you didn't follow the diet. The plan can't be adapted if it's not followed. **The #1 rule is adherence.**\n\nI am **not changing your plan.** Please try to follow the nutrition and workout plan for this week. You can do this!"
-        return new_plan
+    diet_adherence = progress['diet_adherence']
+    strength_progress = progress['strength_progress']
+    energy_levels = progress['energy_levels']
+    sleep_quality = progress['sleep_quality']
+    
+    # This list will hold all the AI's feedback messages
+    feedback_log = []
+    
+    # --- AI Coaching Logic ---
+    
+    # 1. First, check for "confounders" (sleep, diet adherence).
+    # A real coach knows not to change the plan if the user didn't follow it.
+    
+    if diet_adherence in ["Bad (I didn't follow the plan)"]:
+        feedback_log.append("The most important factor is consistency. We can't know if the plan is working unless you follow it. **No changes this week.** Let's aim for 100% adherence.")
+        return new_nutrition_plan, new_workout_plan, feedback_log
+        
+    if sleep_quality in ["Poor (4-5 hours)"] or energy_levels == "Low":
+        feedback_log.append("Your sleep and energy are low. This is a huge factor in progress. This week, your #1 goal is to **get 7-8 hours of sleep**. We will keep the plan the same to allow your body to recover.")
+        return new_nutrition_plan, new_workout_plan, feedback_log
 
-    # --- RULE 1: WEIGHT REDUCTION LOGIC ---
+    # 2. If sleep and adherence are good, check progress against the goal.
+    
+    # --- AI LOGIC: WEIGHT REDUCTION ---
     if goal == "Weight Reduction":
-        weight_lost = start_weight - current_weight
-        
-        if weight_lost > 1.5: # Losing too fast (more than 1.5kg in a week)
-            new_plan['ai_feedback'] = f"**AI Feedback:** You lost {weight_lost:.1f} kg this week. This is too fast and you risk losing muscle. We are **increasing your calories slightly** to slow this down to a sustainable rate."
-            new_plan['nutrition_plan']['calories'] += 150
-            
-        elif weight_lost >= 0.4: # Perfect range (0.4 - 1.5kg)
-            new_plan['ai_feedback'] = f"**AI Feedback:** Perfect progress! You lost {weight_lost:.1f} kg. This is the ideal range for sustainable fat loss. **No changes needed.** Keep up the great work!"
+        # Target: ~0.5kg loss per week
+        if weight_change < -0.8: # Lost too fast
+            feedback_log.append(f"You lost {abs(weight_change):.1f} kg! This is great, but a bit fast. We'll **add 150 calories** (mostly from carbs) to make this more sustainable and preserve muscle.")
+            new_nutrition_plan['calories_kcal'] += 150
+            new_nutrition_plan['carbs_g'] += 38 # (150 / 4)
+        elif -0.8 <= weight_change < -0.3: # Perfect range
+            feedback_log.append(f"You lost {abs(weight_change):.1f} kg. This is the perfect range! **No changes to the plan.** Keep up the great work.")
+        else: # Plateaued or gained weight
+            feedback_log.append(f"Your weight stayed about the same (change: {weight_change:.1f} kg). This is a normal plateau. We will make two changes to break it:")
+            feedback_log.append("1. **Decreasing calories by 200.**")
+            feedback_log.append("2. **Adding one 30-minute cardio session.**")
+            new_nutrition_plan['calories_kcal'] -= 200
+            new_nutrition_plan['carbs_g'] -= 50 # (200 / 4)
+            new_workout_plan['notes'] += " AI UPDATE: Add one 30-minute cardio session this week."
 
-        elif weight_lost >= 0: # Lost 0 to 0.4kg (Plateau)
-            if energy == "Low" and sleep == "Poor (<5 hrs)":
-                new_plan['ai_feedback'] = f"**AI Feedback:** Your weight loss has stalled, but you also reported **low energy and poor sleep.** This is the likely cause. More cardio or fewer calories will only make you feel worse. \n\n**Your #1 goal this week is sleep.** No changes to the plan. Focus on 7+ hours."
-            else:
-                new_plan['ai_feedback'] = f"**AI Feedback:** Your weight loss has stalled. This is a normal plateau. We will **increase your cardio slightly** to get things moving again."
-                # Find the first cardio day and add 5 mins
-                for day in new_plan['workout_plan']['weekly_schedule']:
-                    if "Cardio" in day['focus'] or "HIIT" in day['focus']:
-                        day['exercises'][0] = day['exercises'][0].replace(str(int(day['exercises'][0][0:2])), str(int(day['exercises'][0][0:2]) + 5))
-                        break
-
-        else: # Weight was gained
-             new_plan['ai_feedback'] = f"**AI Feedback:** It looks like we gained {abs(weight_lost):.1f} kg. This is okay, it's just data! You reported you **followed the diet**, so our calorie target must be too high. We are **reducing calories by 150** to create a larger deficit."
-             new_plan['nutrition_plan']['calories'] -= 150
-
-    # --- RULE 2: MUSCLE GAIN LOGIC ---
+    # --- AI LOGIC: MUSCLE GAIN ---
     elif goal == "Muscle Gain":
-        weight_gained = current_weight - start_weight
+        # Target: ~0.25kg gain per week
+        if weight_change > 0.5: # Gained too fast (likely fat)
+            feedback_log.append(f"You gained {weight_change:.1f} kg. This is a bit fast, which might mean we're adding too much fat. We'll **decrease calories by 150** to lean this out.")
+            new_nutrition_plan['calories_kcal'] -= 150
+            new_nutrition_plan['carbs_g'] -= 38 # (150 / 4)
+        elif 0.1 <= weight_change < 0.4: # Perfect "lean bulk" range
+            feedback_log.append(f"You gained {weight_change:.1f} kg. This is the perfect range for a lean bulk! **No changes to nutrition.**")
+        else: # Plateaued or lost weight
+            feedback_log.append(f"Your weight stayed about the same (change: {weight_change:.1f} kg). We need to eat more to grow. We'll **add 200 calories** (carbs & protein) to fuel muscle growth.")
+            new_nutrition_plan['calories_kcal'] += 200
+            new_nutrition_plan['carbs_g'] += 30
+            new_nutrition_plan['protein_g'] += 20
         
-        if weight_gained > 0.7: # Gaining too fast (likely fat)
-            new_plan['ai_feedback'] = f"**AI Feedback:** You gained {weight_gained:.1f} kg this week. This is a bit too fast, which may lead to unwanted fat gain. We are **reducing your calories slightly**."
-            new_plan['nutrition_plan']['calories'] -= 100
-        
-        elif weight_gained >= 0.2: # Perfect range (0.2 - 0.7kg)
-            if strength == "Got stronger":
-                new_plan['ai_feedback'] = f"**AI Feedback:** This is the **PERFECT** scenario. You gained {weight_gained:.1f} kg and you got stronger. This is 100% progress. We will apply **Progressive Overload.**"
-                new_plan['workout_plan']['notes'] = "Add +1 rep or +2.5kg to your main compound lifts this week. This is how we grow!"
-            else:
-                new_plan['ai_feedback'] = f"**AI Feedback:** Good weight gain ({weight_gained:.1f} kg), but you felt your strength stalled. This is fine. **No changes to diet.** This week, focus on your form and hitting your protein target."
+        # Strength Progress Logic (Progressive Overload)
+        if strength_progress == "Got stronger (added weight/reps)":
+            feedback_log.append("You got stronger! This is the #1 rule of muscle growth (Progressive Overload). Your next workout, try to **add another 1-2 reps, or add 2.5kg** to your main lifts.")
+            new_workout_plan['notes'] += " AI UPDATE: You're stronger. Apply progressive overload: add 2.5kg or 1-2 reps to main lifts."
+        elif strength_progress == "Stalled (lifted the same)":
+            feedback_log.append("You stalled on lifts. This is normal. This week, we will **change your rep scheme** to introduce a new stimulus. We'll move from 8-10 reps to 5-8 reps on your main lifts.")
+            # This is a simple text replace, a real app would be more granular
+            new_workout_plan['weekly_schedule'] = [str(day).replace('8-10', '5-8') for day in new_workout_plan['weekly_schedule']]
 
-        else: # Gained 0kg or lost weight (Stalled)
-            if energy == "Low" and sleep == "Poor (<5 hrs)":
-                new_plan['ai_feedback'] = f"**AI Feedback:** Your muscle gain has stalled, but you also reported **low energy and poor sleep.** You cannot build muscle in this state. **Your #1 goal this week is sleep.** No changes to the plan. Focus on 7+ hours. Your body builds muscle *when you sleep*."
-            elif strength == "Stayed the same" and diet == "Followed it okay":
-                 new_plan['ai_feedback'] = f"**AI Feedback:** Gain has stalled. You reported you 'okay' followed the diet. This is the issue. To gain muscle, you **must** hit your calorie and protein targets. **No changes to plan.** Focus on 100% diet adherence this week."
-            else: # Followed diet, good sleep, still stalled
-                new_plan['ai_feedback'] = f"**AI Feedback:** You've hit a plateau. You're doing everything right, so it's time to **increase calories by 200** to fuel new growth. It's also time to **change the stimulus.**"
-                new_plan['nutrition_plan']['calories'] += 200
-                # Stimulus change: Change rep range
-                if "5-6" in new_plan['workout_plan']['weekly_schedule'][0]['exercises'][0]:
-                    new_plan['workout_plan']['notes'] = "New Stimulus: We are switching to Hypertrophy. Aim for 8-10 reps."
-                else:
-                    new_plan['workout_plan']['notes'] = "New Stimulus: We are switching to Strength. Aim for 5-6 reps."
-
-    # --- RULE 3: GENERAL FITNESS LOGIC ---
+    # --- AI LOGIC: GENERAL FITNESS ---
     else:
-        new_plan['ai_feedback'] = f"**AI Feedback:** Great job logging your week! For 'General Fitness', the main goal is consistency. You're doing great. **No changes to the plan.** Keep it up!"
-
-    # Recalculate macros for all plans
-    nutrition = new_plan['nutrition_plan']
-    weight = current_weight # Use new weight for macro calcs
-    nutrition['protein_g'] = int(weight * 1.8)
-    fats_calories = nutrition['calories'] * 0.25
-    nutrition['fats_g'] = int(fats_calories / 9)
-    protein_calories = nutrition['protein_g'] * 4
-    carb_calories = nutrition['calories'] - protein_calories - fats_calories
-    nutrition['carbs_g'] = int(carb_calories / 4)
-    new_plan['nutrition_plan'] = nutrition
-
-    return new_plan
-
+        feedback_log.append("You're on the General Fitness plan. The main goal is consistency. Keep showing up!")
+        if strength_progress == "Got stronger (added weight/reps)":
+            feedback_log.append("You got stronger! This is fantastic. Keep adding weight or reps when you can.")
+        
+    return new_nutrition_plan, new_workout_plan, feedback_log
 
 # --- 2. STREAMLIT APP UI ---
 
-st.title("Welcome to Your MuscleMap Dashboard")
-
-# Use st.session_state as a simple "database"
-if 'user_profile' not in st.session_state:
-    st.session_state.user_profile = None
-    st.session_state.current_plan = None
-    st.session_state.progress_history = []
+# We use "page" in session_state to control navigation
+if 'page' not in st.session_state:
     st.session_state.page = "Onboarding"
+    st.session_state.user_profile = {}
+    st.session_state.current_nutrition_plan = {}
+    st.session_state.current_workout_plan = {}
+    st.session_state.progress_history = []
 
 # --- PAGE 1: ONBOARDING ---
 if st.session_state.page == "Onboarding":
-    st.header("Let's create your profile to get started.")
-    st.markdown("To create the best AI-driven plan, we need to know about you.")
+    st.title("Welcome to MuscleMap. Let's build your profile.")
+    st.markdown("To create your personalized AI plan, we need some starting information.")
     
     with st.form("profile_form"):
-        st.subheader("Your Body Details")
-        col1, col2 = st.columns(2)
+        st.subheader("Step 1: Basic Information")
+        col1, col2, col3 = st.columns(3)
         with col1:
             age = st.number_input("Age", min_value=16, max_value=100, value=25)
-            gender = st.selectbox("Gender", ("Male", "Female"))
+        with col2:
+            gender = st.selectbox("Gender", ["Male", "Female"])
+        with col3:
+             activity_level = st.selectbox("Activity Level (at work/school)", 
+                                           ["Sedentary (office job)", 
+                                            "Lightly Active (1-2 days/week)", 
+                                            "Moderately Active (3-5 days/week)", 
+                                            "Very Active (6-7 days/week)"])
+        
+        st.subheader("Step 2: Body Metrics")
+        col1, col2 = st.columns(2)
+        with col1:
             height = st.number_input("Height (cm)", min_value=100, max_value=250, value=170)
         with col2:
             start_weight = st.number_input("Current Weight (kg)", min_value=40.0, max_value=200.0, value=70.0, step=0.1)
-            activity_level = st.selectbox("Daily Activity Level (excluding workouts)", 
-                                        ("Sedentary (office job)", "Light (1-2 workouts/week)", 
-                                         "Moderate (3-5 workouts/week)", "Active (6-7 workouts/week)"))
-            experience_level = st.selectbox("What is your gym experience?", 
-                                        ("Beginner (0-1 years)", "Intermediate (1-3 years)", "Advanced (3+ years)"))
 
-        st.subheader("Your Fitness Goal")
-        goal_options = ["Weight Reduction", "Muscle Gain", "General Fitness"]
-        goal = st.selectbox("What is your primary goal?", goal_options)
+        st.subheader("Step 3: Your Goals")
+        col1, col2 = st.columns(2)
+        with col1:
+            goal_options = ["Weight Reduction", "Muscle Gain", "General Fitness"]
+            goal = st.selectbox("Primary Goal", goal_options)
+        with col2:
+            exp_options = ["Beginner (0-1 years)", "Intermediate (1-3 years)", "Advanced (3+ years)"]
+            experience_level = st.selectbox("Gym Experience", exp_options)
         
-        submitted = st.form_submit_button("Create My AI-Powered Plan")
+        st.markdown("---")
+        submitted = st.form_submit_button("Build My AI Plan!", type="primary")
         
         if submitted:
             # 1. Save the profile
             st.session_state.user_profile = {
                 "age": age,
                 "gender": gender,
+                "activity_level": activity_level,
                 "height": height,
                 "start_weight": start_weight,
-                "activity_level": activity_level,
-                "experience_level": experience_level,
                 "goal": goal,
+                "experience_level": experience_level,
+                "plan_start_date": datetime.date.today(),
+                "weeks_on_plan": 0
             }
             profile = st.session_state.user_profile
             
@@ -348,65 +428,67 @@ if st.session_state.page == "Onboarding":
                 workout_plan = get_initial_workout_plan(profile['goal'], profile['experience_level'])
 
                 # 3. Save the first plan to session state
-                st.session_state.current_plan = {
-                    "plan_title": f"Initial Plan: {goal}",
-                    "ai_feedback": "**AI Feedback:** Welcome! Here is your personalized starting plan. Follow this for one week, then log your progress. You've got this!",
-                    "nutrition_plan": nutrition_plan,
-                    "workout_plan": workout_plan
-                }
-                
-                # 4. Add initial weight to history
-                st.session_state.progress_history = [{"date": datetime.date.today(), "weight": start_weight, "notes": "Initial Profile"}]
-
+                st.session_state.current_nutrition_plan = nutrition_plan
+                st.session_state.current_workout_plan = workout_plan
+            
+            # 4. Move to the main dashboard
             st.session_state.page = "Dashboard"
             st.success("Your new AI plan is ready!")
             st.balloons()
+            time.sleep(2)
             st.rerun()
 
 # --- PAGE 2: MAIN DASHBOARD ---
-if st.session_state.page == "Dashboard":
+elif st.session_state.page == "Dashboard":
+    
+    # Get all the current user data
     profile = st.session_state.user_profile
-    plan = st.session_state.current_plan
+    nutri_plan = st.session_state.current_nutrition_plan
+    plan = st.session_state.current_workout_plan
     
-    st.header(f"Your Goal: {profile['goal']} ({profile['experience_level']})")
-    st.markdown("---")
+    st.title(f"Your AI Dashboard: {profile['goal']}")
     
-    # AI Feedback Box
-    st.subheader("🤖 AI Coach Feedback")
-    st.info(plan['ai_feedback'])
+    # Check if AI has feedback, and show it as an info box
+    if 'ai_feedback' in st.session_state and st.session_state.ai_feedback:
+        st.info("".join([f"- {msg}\n" for msg in st.session_state.ai_feedback]))
+        # Clear feedback after showing it
+        st.session_state.ai_feedback = None 
     
-    col1, col2 = st.columns(2)
+    col1, col2 = st.columns([1.5, 1]) # Make first column wider
     
     with col1:
         # Nutrition Plan
-        st.subheader("Your Nutrition Plan")
+        st.subheader("Your AI Nutrition Plan")
         with st.container(border=True):
-            nutri = plan['nutrition_plan']
-            c1, c2 = st.columns(2)
-            c1.metric("Target Calories", f"{nutri['calories']} kcal")
-            c2.metric("Target Protein", f"{nutri['protein_g']} g")
-            st.progress(nutri['protein_g'] / (nutri['calories']/4)) # Show protein %
-            
-            st.markdown(f"- **Fats:** {nutri['fats_g']} g")
-            st.markdown(f"- **Carbs:** {nutri['carbs_g']} g")
+            nutri = nutri_plan
+            st.metric("Target Calories", f"{nutri['calories_kcal']} kcal")
+            st.markdown(f"**Notes:** {nutri['notes']}")
+            st.markdown("---")
+            p1, p2, p3 = st.columns(3)
+            p1.metric("Protein", f"{nutri['protein_g']} g")
+            p2.metric("Fats", f"{nutri['fats_g']} g")
+            p3.metric("Carbs", f"{nutri['carbs_g']} g")
 
-        # --- UPDATED PROFILE BOX TO SHOW BMI ---
+        # --- UPDATED PROFILE BOX TO SHOW BMI GAUGE ---
         st.subheader("Your Health Metrics")
         with st.container(border=True):
-            p1, p2 = st.columns(2)
-            p1.metric("Your BMI", f"{profile['bmi']:.1f}")
-            p2.metric("Maintenance Calories (TDEE)", f"{profile['tdee']} kcal")
             
-            # Add the colored category from the image!
-            st.markdown(f"**Your Category: <span style='color:{profile['bmi_color']}; font-weight:bold;'>{profile['bmi_category']}</span>**", unsafe_allow_html=True)
-            st.markdown("---")
-            st.markdown(f"**Current Weight:** {profile['start_weight']} kg | **Height:** {profile['height']} cm | **Age:** {profile['age']}")
+            # --- HERE IS THE NEW GAUGE ---
+            bmi_gauge_fig = create_bmi_gauge(profile['bmi'])
+            st.plotly_chart(bmi_gauge_fig, use_container_width=True)
+            # --- END OF GAUGE ---
+
+            p1, p2 = st.columns(2)
+            p1.metric("Maintenance Calories (TDEE)", f"{profile['tdee']} kcal")
+            p2.metric("Current Weight", f"{profile['start_weight']} kg")
+            
+            st.markdown(f"**Height:** {profile['height']} cm | **Age:** {profile['age']}")
             
     with col2:
         # Workout Plan
-        st.subheader("Your Workout Plan")
+        st.subheader("Your AI Workout Plan")
         with st.container(border=True):
-            wp = plan['workout_plan']
+            wp = plan
             st.markdown(f"**Split Type:** {wp['split_type']} ({wp['frequency_per_week']} days/week)")
             st.markdown(f"**Notes:** {wp['notes']}")
             st.markdown("---")
@@ -423,82 +505,109 @@ if st.session_state.page == "Dashboard":
 
     # --- Weekly Check-in Form ---
     st.markdown("---")
-    st.header("Weekly Progress Check-in")
-    st.markdown("Log your progress **once per week**. The AI will analyze your data and adapt your plan.")
+    st.subheader("Weekly AI Check-in")
+    
+    # Calculate when the next check-in is due
+    next_checkin_date = profile['plan_start_date'] + datetime.timedelta(days=(profile['weeks_on_plan'] * 7) + 7)
+    days_until_checkin = (next_checkin_date - datetime.date.today()).days
 
-    with st.form("progress_form"):
-        st.subheader("Your Weekly Metrics")
+    if days_until_checkin > 0:
+        st.info(f"Your next weekly check-in is available in **{days_until_checkin} day(s)** (on {next_checkin_date.strftime('%B %d')}). Keep following the plan!")
+    else:
+        st.success("Your weekly check-in is ready! Please fill out the form below.")
         
-        col1, col2 = st.columns(2)
-        with col1:
-            current_weight = st.number_input("Your New Current Weight (kg)", min_value=40.0, max_value=200.0, value=profile['start_weight'], step=0.1)
-            diet_adherence = st.radio("How well did you follow the diet?", 
-                                    ("Followed it perfectly", "Followed it okay", "Didn't follow"), horizontal=True)
-            strength_progress = st.radio("How was your strength in the gym?",
-                                       ("Got stronger", "Stayed the same", "Felt weaker"), horizontal=True)
-        with col2:
-            energy_levels = st.radio("How were your energy levels?",
-                                   ("High", "Normal", "Low"), horizontal=True)
-            sleep_quality = st.radio("How was your sleep quality (avg)?",
-                                   ("Great (7+ hrs)", "Okay (5-6 hrs)", "Poor (<5 hrs)"), horizontal=True)
-            notes = st.text_area("Any other notes for the AI? (e.g., 'Felt sick', 'Was very stressed')")
-
-        submitted = st.form_submit_button("Analyze My Week & Adapt My Plan")
-        
-        if submitted:
-            # This is the "Core Loop"!
+        with st.form("progress_form"):
+            st.markdown("Log your progress for the past week. Be as honest as possible!")
             
-            # 1. Create progress log
-            progress_log = {
-                "date": datetime.date.today(),
-                "current_weight": current_weight,
-                "diet_adherence": diet_adherence,
-                "energy_levels": energy_levels,
-                "strength_progress": strength_progress,
-                "sleep_quality": sleep_quality,
-                "notes": notes
-            }
+            # 1. New Weight
+            current_weight = st.number_input("Your New Current Weight (kg)", 
+                                             min_value=40.0, max_value=200.0, 
+                                             value=profile['start_weight'], step=0.1)
             
-            with st.spinner("AI is analyzing your week and adapting your plan..."):
-                time.sleep(3)
+            col1, col2 = st.columns(2)
+            with col1:
+                # 2. Diet Adherence
+                diet_adherence = st.selectbox("How was your diet adherence?",
+                                              ["Great (I hit my targets)", 
+                                               "Good (I was pretty close)", 
+                                               "Okay (I slipped up a few times)", 
+                                               "Bad (I didn't follow the plan)"])
                 
-                # 2. Call the "AI Brain" to get a new plan
-                new_plan = get_ai_recommendation(profile, progress_log)
+                # 3. Energy Levels
+                energy_levels = st.selectbox("How were your energy levels?",
+                                             ["High", "Normal", "Low"])
+            
+            with col2:
+                # 4. Strength Progress (Only ask if not on a "Rest" day)
+                strength_progress = st.selectbox("How was your strength in the gym?",
+                                                 ["Got stronger (added weight/reps)", 
+                                                  "Stalled (lifted the same)", 
+                                                  "Got weaker (had to lower weight)"])
                 
-                # 3. Update the user's plan in our "database"
-                st.session_state.current_plan = new_plan
-                
-                # 4. Update the user's "start_weight" for the *next* interval
-                st.session_state.user_profile['start_weight'] = current_weight
-                
-                # 5. Add to history
-                st.session_state.progress_history.append({"date": datetime.date.today(), "weight": current_weight, "notes": notes or "N/A"})
+                # 5. Sleep Quality
+                sleep_quality = st.selectbox("How was your sleep quality?",
+                                             ["Great (7-8+ hours)", 
+                                              "Okay (6-7 hours)", 
+                                              "Poor (4-5 hours)"])
 
-            st.success("Your plan has been updated by the AI! Check your new feedback above.")
-            st.balloons()
-            st.rerun()
+            submitted = st.form_submit_button("Analyze My Week & Update My Plan", type="primary")
 
-    # --- Progress History Chart & Table ---
+            if submitted:
+                with st.spinner("Your AI Coach is analyzing your week..."):
+                    
+                    # 1. Create the detailed progress log
+                    progress_log = {
+                        "date": datetime.date.today(),
+                        "week_number": profile['weeks_on_plan'] + 1,
+                        "start_weight_of_week": profile['start_weight'],
+                        "current_weight": current_weight,
+                        "diet_adherence": diet_adherence,
+                        "strength_progress": strength_progress,
+                        "energy_levels": energy_levels,
+                        "sleep_quality": sleep_quality
+                    }
+                    
+                    # 2. Call the "AI Brain" to get new plans and feedback
+                    new_nutrition_plan, new_workout_plan, ai_feedback = get_ai_recommendation(profile, progress_log)
+                    
+                    # 3. Save all the new data to our session_state "database"
+                    st.session_state.progress_history.append(progress_log)
+                    st.session_state.current_nutrition_plan = new_nutrition_plan
+                    st.session_state.current_workout_plan = new_workout_plan
+                    st.session_state.ai_feedback = ai_feedback
+                    
+                    # 4. Update the profile for the *next* week
+                    st.session_state.user_profile['start_weight'] = current_weight
+                    st.session_state.user_profile['weeks_on_plan'] += 1
+                    
+                    # 5. Update BMI with new weight
+                    bmi, bmi_category, bmi_color = calculate_bmi_details(current_weight, profile['height'])
+                    st.session_state.user_profile['bmi'] = bmi
+                    st.session_state.user_profile['bmi_category'] = bmi_category
+                    st.session_state.user_profile['bmi_color'] = bmi_color
+
+                st.success("Your AI Coach has updated your plan! Reloading...")
+                st.balloons()
+                time.sleep(2)
+                st.rerun()
+
+    # --- Progress History Chart ---
     if st.session_state.progress_history:
         st.markdown("---")
-        st.header("Your Progress History")
+        st.subheader("Your Weight Progress")
+        history_df = pd.DataFrame(st.session_state.progress_history)
         
-        history_data = []
-        for i, log in enumerate(st.session_state.progress_history):
-            history_data.append({
-                "Check-in #": i,
-                "Date": log['date'],
-                "Weight (kg)": log['weight'],
-                "Notes": log.get('notes', 'N/A')
-            })
-
-        history_df = pd.DataFrame(history_data).set_index("Check-in #")
+        # Create a clean DataFrame for the chart
+        chart_data = history_df[['date', 'current_weight']].copy()
+        chart_data.rename(columns={'current_weight': 'Weight (kg)'}, inplace=True)
+        chart_data.set_index('date', inplace=True)
         
-        st.dataframe(history_df, use_container_width=True)
+        # Add the user's starting weight to the beginning of the chart
+        start_data = pd.DataFrame(
+            {'Weight (kg)': [st.session_state.user_profile['start_weight']]},
+            index=[st.session_state.user_profile['plan_start_date']]
+        )
+        full_chart_data = pd.concat([start_data, chart_data])
         
-        # Create a line chart of the weight
-        chart_df = history_df.rename(columns={"Weight (kg)": "Weight"}).set_index("Date")
-        st.line_chart(chart_df, y="Weight")
-
-
+        st.line_chart(full_chart_data)
 
