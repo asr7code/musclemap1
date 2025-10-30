@@ -526,74 +526,76 @@ elif st.session_state.page == "Dashboard":
         # 1. New Weight
         current_weight = st.number_input("Your New Current Weight (kg)", 
                                          min_value=40.0, max_value=200.0, 
-                                             value=profile['start_weight'], step=0.1)
+                                         value=profile['start_weight'], step=0.1)
+        
+        # --- THIS IS THE FIX ---
+        # The code below was over-indented. It has been fixed.
+        col1, col2 = st.columns(2)
+        with col1:
+            # 2. Diet Adherence
+            diet_adherence = st.selectbox("How was your diet adherence?",
+                                          ["Great (I hit my targets)", 
+                                           "Good (I was pretty close)", 
+                                           "Okay (I slipped up a few times)", 
+                                           "Bad (I didn't follow the plan)"])
             
-            col1, col2 = st.columns(2)
-            with col1:
-                # 2. Diet Adherence
-                diet_adherence = st.selectbox("How was your diet adherence?",
-                                              ["Great (I hit my targets)", 
-                                               "Good (I was pretty close)", 
-                                               "Okay (I slipped up a few times)", 
-                                               "Bad (I didn't follow the plan)"])
-                
-                # 3. Energy Levels
-                energy_levels = st.selectbox("How were your energy levels?",
-                                             ["High", "Normal", "Low"])
+            # 3. Energy Levels
+            energy_levels = st.selectbox("How were your energy levels?",
+                                         ["High", "Normal", "Low"])
+        
+        with col2:
+            # 4. Strength Progress (Only ask if not on a "Rest" day)
+            strength_progress = st.selectbox("How was your strength in the gym?",
+                                             ["Got stronger (added weight/reps)", 
+                                              "Stalled (lifted the same)", 
+                                              "Got weaker (had to lower weight)"])
             
-            with col2:
-                # 4. Strength Progress (Only ask if not on a "Rest" day)
-                strength_progress = st.selectbox("How was your strength in the gym?",
-                                                 ["Got stronger (added weight/reps)", 
-                                                  "Stalled (lifted the same)", 
-                                                  "Got weaker (had to lower weight)"])
+            # 5. Sleep Quality
+            sleep_quality = st.selectbox("How was your sleep quality?",
+                                         ["Great (7-8+ hours)", 
+                                          "Okay (6-7 hours)", 
+                                          "Poor (4-5 hours)"])
+
+        submitted = st.form_submit_button("Analyze My Week & Update My Plan", type="primary")
+
+        if submitted:
+            with st.spinner("Your AI Coach is analyzing your week..."):
                 
-                # 5. Sleep Quality
-                sleep_quality = st.selectbox("How was your sleep quality?",
-                                             ["Great (7-8+ hours)", 
-                                              "Okay (6-7 hours)", 
-                                              "Poor (4-5 hours)"])
+                # 1. Create the detailed progress log
+                progress_log = {
+                    "date": datetime.date.today(),
+                    "week_number": profile['weeks_on_plan'] + 1,
+                    "start_weight_of_week": profile['start_weight'],
+                    "current_weight": current_weight,
+                    "diet_adherence": diet_adherence,
+                    "strength_progress": strength_progress,
+                    "energy_levels": energy_levels,
+                    "sleep_quality": sleep_quality
+                }
+                
+                # 2. Call the "AI Brain" to get new plans and feedback
+                new_nutrition_plan, new_workout_plan, ai_feedback = get_ai_recommendation(profile, progress_log)
+                
+                # 3. Save all the new data to our session_state "database"
+                st.session_state.progress_history.append(progress_log)
+                st.session_state.current_nutrition_plan = new_nutrition_plan
+                st.session_state.current_workout_plan = new_workout_plan
+                st.session_state.ai_feedback = ai_feedback
+                
+                # 4. Update the profile for the *next* week
+                st.session_state.user_profile['start_weight'] = current_weight
+                st.session_state.user_profile['weeks_on_plan'] += 1
+                
+                # 5. Update BMI with new weight
+                bmi, bmi_category, bmi_color = calculate_bmi_details(current_weight, profile['height'])
+                st.session_state.user_profile['bmi'] = bmi
+                st.session_state.user_profile['bmi_category'] = bmi_category
+                st.session_state.user_profile['bmi_color'] = bmi_color
 
-            submitted = st.form_submit_button("Analyze My Week & Update My Plan", type="primary")
-
-            if submitted:
-                with st.spinner("Your AI Coach is analyzing your week..."):
-                    
-                    # 1. Create the detailed progress log
-                    progress_log = {
-                        "date": datetime.date.today(),
-                        "week_number": profile['weeks_on_plan'] + 1,
-                        "start_weight_of_week": profile['start_weight'],
-                        "current_weight": current_weight,
-                        "diet_adherence": diet_adherence,
-                        "strength_progress": strength_progress,
-                        "energy_levels": energy_levels,
-                        "sleep_quality": sleep_quality
-                    }
-                    
-                    # 2. Call the "AI Brain" to get new plans and feedback
-                    new_nutrition_plan, new_workout_plan, ai_feedback = get_ai_recommendation(profile, progress_log)
-                    
-                    # 3. Save all the new data to our session_state "database"
-                    st.session_state.progress_history.append(progress_log)
-                    st.session_state.current_nutrition_plan = new_nutrition_plan
-                    st.session_state.current_workout_plan = new_workout_plan
-                    st.session_state.ai_feedback = ai_feedback
-                    
-                    # 4. Update the profile for the *next* week
-                    st.session_state.user_profile['start_weight'] = current_weight
-                    st.session_state.user_profile['weeks_on_plan'] += 1
-                    
-                    # 5. Update BMI with new weight
-                    bmi, bmi_category, bmi_color = calculate_bmi_details(current_weight, profile['height'])
-                    st.session_state.user_profile['bmi'] = bmi
-                    st.session_state.user_profile['bmi_category'] = bmi_category
-                    st.session_state.user_profile['bmi_color'] = bmi_color
-
-                st.success("Your AI Coach has updated your plan! Reloading...")
-                st.balloons()
-                time.sleep(2)
-                st.rerun()
+            st.success("Your AI Coach has updated your plan! Reloading...")
+            st.balloons()
+            time.sleep(2)
+            st.rerun()
 
     # --- Progress History Chart ---
     if st.session_state.progress_history:
@@ -614,5 +616,4 @@ elif st.session_state.page == "Dashboard":
         full_chart_data = pd.concat([start_data, chart_data])
         
         st.line_chart(full_chart_data)
-
 
