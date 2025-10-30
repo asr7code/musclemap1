@@ -511,10 +511,17 @@ elif st.session_state.page == "Dashboard":
     next_checkin_date = profile['plan_start_date'] + datetime.timedelta(days=(profile['weeks_on_plan'] * 7) + 7)
     days_until_checkin = (next_checkin_date - datetime.date.today()).days
 
+    # --- MODIFICATION FOR DEMO ---
+    # The 'if/else' block that hides the form is removed.
+    # We now ALWAYS show the form, so you can test the app.
     if days_until_checkin > 0:
-        st.info(f"Your next weekly check-in is available in **{days_until_checkin} day(s)** (on {next_checkin_date.strftime('%B %d')}). Keep following the plan!")
+        st.info(f"Your next weekly check-in is due in **{days_until_checkin} day(s)**. (Demo mode: The form is always available for testing.)")
     else:
         st.success("Your weekly check-in is ready! Please fill out the form below.")
+    
+    # This form is now ALWAYS visible, not inside an 'else' block.
+    with st.form("progress_form"):
+        st.markdown("Log your progress for the past week. Be as honest as possible!")
         
         with st.form("progress_form"):
             st.markdown("Log your progress for the past week. Be as honest as possible!")
@@ -610,4 +617,5 @@ elif st.session_state.page == "Dashboard":
         full_chart_data = pd.concat([start_data, chart_data])
         
         st.line_chart(full_chart_data)
+
 
