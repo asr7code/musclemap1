@@ -136,9 +136,12 @@ def create_bmi_gauge(bmi):
     clipped_bmi = max(0, min(bmi, max_bmi)) 
     angle_rad = (1 - (clipped_bmi / max_bmi)) * math.pi
     
-    center_x, center_y = 0.5, -0.05 # Move center down slightly
-    needle_length = 0.5
-    needle_base_width = 0.03 # Thinner base
+    # --- FIX ---
+    # 1. Move pivot point lower (from -0.05 to -0.1)
+    # 2. Make needle base thinner (from 0.03 to 0.02)
+    center_x, center_y = 0.5, -0.1 
+    needle_length = 0.5 # Keep length
+    needle_base_width = 0.02 # Thinner base
     
     # Tip
     tip_x = center_x + needle_length * math.cos(angle_rad)
@@ -163,9 +166,11 @@ def create_bmi_gauge(bmi):
     )
     
     # Add a circle for the pivot point
+    # --- FIX ---
+    # 3. Make pivot circle smaller and move it down
     fig.add_shape(
         type="circle",
-        x0=0.47, y0=-0.08, x1=0.53, y1=-0.02, # Centered at (0.5, -0.05)
+        x0=0.48, y0=-0.12, x1=0.52, y1=-0.08, # Centered at (0.5, -0.1)
         fillcolor="gray", # <-- NEW: Changed to gray
         line_width=0,
         layer="above"
@@ -669,4 +674,5 @@ elif st.session_state.page == "Dashboard":
         full_chart_data = pd.concat([start_data, chart_data])
         
         st.line_chart(full_chart_data)
+
 
