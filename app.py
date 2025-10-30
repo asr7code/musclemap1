@@ -3,7 +3,8 @@ import pandas as pd
 import time
 import copy
 import datetime
-import plotly.graph_objects as go # <-- NEW: Import Plotly
+import plotly.graph_objects as go
+import math # <-- NEW: Import Math for needle calculations
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -86,14 +87,16 @@ def calculate_bmi_details(weight, height_cm):
         
     return bmi, category, color
 
+# --- THIS IS THE NEW GAUGE FUNCTION ---
 def create_bmi_gauge(bmi):
     """
-    Creates a Plotly gauge chart based on the user's BMI.
+    Creates a Plotly gauge chart with a custom-drawn needle.
     """
-    # Define the ranges and colors from the user's image
-    ranges = [0, 18.5, 25, 30, 35, 50] # 50 is a reasonable max for the gauge
+    # Define the ranges and colors
+    ranges = [0, 18.5, 25, 30, 35, 50]
     colors = ["#007bff", "#28a745", "#ffc107", "#fd7e14", "#dc3545"]
     
+    # Create the base gauge
     fig = go.Figure(go.Indicator(
         mode = "gauge+number",
         value = bmi,
@@ -101,7 +104,7 @@ def create_bmi_gauge(bmi):
         title = {'text': "Your BMI Category", 'font': {'size': 20}},
         gauge = {
             'axis': {'range': [None, 50], 'tickwidth': 1, 'tickcolor': "darkgray"},
-            'bar': {'color': "rgba(0,0,0,0)"}, # Make the value bar invisible
+            'bar': {'color': "rgba(0,0,0,0)"}, # Make the default bar invisible
             'bgcolor': "white",
             'borderwidth': 2,
             'bordercolor': "gray",
@@ -111,20 +114,56 @@ def create_bmi_gauge(bmi):
                 {'range': [ranges[2], ranges[3]], 'color': colors[2], 'name': 'Overweight'},
                 {'range': [ranges[3], ranges[4]], 'color': colors[3], 'name': 'Obese'},
                 {'range': [ranges[4], ranges[5]], 'color': colors[4], 'name': 'Extremely Obese'}
-            ],
-            
-            # --- THIS IS THE "NEEDLE" ---
-            # I've changed this to be a thick, red line
-            # that looks much more like a "needle"
-            'threshold': {
-                'line': {'color': "red", 'width': 10},
-                'thickness': 0.9,
-                'value': bmi
-            }
+            ]
+            # We REMOVED the 'threshold' block here
         }
     ))
     
-    # Make it smaller and transparent for Streamlit
+    # --- Draw the Custom Needle ---
+    
+    # Map BMI to angle (0-50 BMI -> 180-0 degrees)
+    max_bmi = 50
+    # Ensure BMI is within the gauge range for angle calculation
+    clipped_bmi = max(0, min(bmi, max_bmi)) 
+    angle_rad = (1 - (clipped_bmi / max_bmi)) * math.pi
+    
+    # Needle properties (relative to the plot's 0-1, 0-1 coordinate system)
+    center_x, center_y = 0.5, 0
+    needle_length = 0.4
+    needle_base_width = 0.04 # Width of the needle base
+    
+    # Calculate coordinates for the triangle
+    # Tip
+    tip_x = center_x + needle_length * math.cos(angle_rad)
+    tip_y = center_y + needle_length * math.sin(angle_rad)
+    
+    # Base corners (perpendicular to the needle)
+    base_x1 = center_x - needle_base_width * math.sin(angle_rad)
+    base_y1 = center_y + needle_base_width * math.cos(angle_rad)
+    base_x2 = center_x + needle_base_width * math.sin(angle_rad)
+    base_y2 = center_y - needle_base_width * math.cos(angle_rad)
+
+    # Create an SVG path for the triangular needle
+    path = f'M {base_x1},{base_y1} L {base_x2},{base_y2} L {tip_x},{tip_y} Z'
+    
+    # Add the needle shape
+    fig.add_shape(
+        type="path",
+        path=path,
+        fillcolor="black",
+        line_width=0,
+        layer="above" # Draw it on top of the gauge
+    )
+    
+    # Add a circle for the pivot point
+    fig.add_shape(
+        type="circle",
+        x0=0.46, y0=-0.04, x1=0.54, y1=0.04, # Centered at (0.5, 0)
+        fillcolor="black",
+        line_width=0,
+        layer="above"
+    )
+
     fig.update_layout(
         height=350, 
         margin={'t': 50, 'b': 30, 'l': 30, 'r': 30},
@@ -133,6 +172,7 @@ def create_bmi_gauge(bmi):
     )
     return fig
 
+# --- (Rest of the "AI Brain" functions: get_initial_nutrition_plan, etc.) ---
 def get_initial_nutrition_plan(tdee, goal, weight):
     """
     Generates a structured nutrition plan based on TDEE and goal.
@@ -261,8 +301,6 @@ def get_initial_workout_plan(goal, experience):
     
     return plan
 
-# --- THIS IS THE FIRST FIX ---
-# The function now accepts the current plans as arguments
 def get_ai_recommendation(profile, progress, current_nutrition_plan, current_workout_plan):
     """
     This is the "AI Coach" brain.
@@ -270,8 +308,7 @@ def get_ai_recommendation(profile, progress, current_nutrition_plan, current_wor
     and makes an intelligent decision on how to adapt their plan.
     """
     
-    # --- THIS IS THE SECOND FIX ---
-    # We now deepcopy from the arguments, not from the profile dict
+    # Deep copy the plans to avoid changing the original
     new_nutrition_plan = copy.deepcopy(current_nutrition_plan)
     new_workout_plan = copy.deepcopy(current_workout_plan)
     
@@ -533,8 +570,6 @@ elif st.session_state.page == "Dashboard":
                                          min_value=40.0, max_value=200.0, 
                                          value=profile['start_weight'], step=0.1)
         
-        # --- THIS IS THE FIX ---
-        # The code below was over-indented. It has been fixed.
         col1, col2 = st.columns(2)
         with col1:
             # 2. Diet Adherence
@@ -579,7 +614,7 @@ elif st.session_state.page == "Dashboard":
                 }
                 
                 # 2. Call the "AI Brain" to get new plans and feedback
-                # --- THIS IS THE THIRD FIX ---
+                # --- THIS IS THE FIX ---
                 # We now pass the current plans to the function
                 new_nutrition_plan, new_workout_plan, ai_feedback = get_ai_recommendation(
                     profile, 
@@ -628,5 +663,4 @@ elif st.session_state.page == "Dashboard":
         full_chart_data = pd.concat([start_data, chart_data])
         
         st.line_chart(full_chart_data)
-
 
