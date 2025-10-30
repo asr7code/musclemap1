@@ -114,10 +114,11 @@ def create_bmi_gauge(bmi):
             ],
             
             # --- THIS IS THE "NEEDLE" ---
-            # I've made it thicker (thickness=1) and wider (width=8)
+            # I've changed this to be a thick, red line
+            # that looks much more like a "needle"
             'threshold': {
-                'line': {'color': "black", 'width': 8},
-                'thickness': 1,
+                'line': {'color': "red", 'width': 10},
+                'thickness': 0.9,
                 'value': bmi
             }
         }
@@ -627,4 +628,5 @@ elif st.session_state.page == "Dashboard":
         full_chart_data = pd.concat([start_data, chart_data])
         
         st.line_chart(full_chart_data)
+
 
