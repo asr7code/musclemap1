@@ -17,14 +17,6 @@ st.set_page_config(
 with st.sidebar:
     st.title("MuscleMap AI 💪")
     st.markdown("Your AI-Powered Fitness Transformation Companion.")
-    st.markdown("---")
-    st.markdown("**Project By:**")
-    st.markdown("Paramjit Singh (2228947)")
-    st.markdown("Rahul Rana (2228955)")
-    st.markdown("**Mentor:**")
-    st.markdown("Er. Aditya Sharma")
-    st.markdown("---")
-    st.markdown(f"*{datetime.date.today().strftime('%B %d, %Y')}*")
 
 # --- 1. AI "BRAIN" - FITNESS & NUTRITION RULES ---
 
